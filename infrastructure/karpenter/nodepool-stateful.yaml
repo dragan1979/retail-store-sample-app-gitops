@@ -1,0 +1,68 @@
+# Dedicated to database/broker pods (2 PostgreSQL, 2 MariaDB, 2 Redis, 1 RabbitMQ —7 pods total with 
+# updated counts). The NoSchedule taint keeps stateless pods off these VMs, 
+# on-demand prevents Spot evictions, and WhenEmpty ensures Karpenter never disrupts a running database node
+ # with an attached Azure Managed Disk.
+
+# Karpenter never pre-provisions idle VMs—it only creates nodes in response to Pending pods:
+# Before deploying your apps (0 nodes): stateful-pool sits at 0 VMs ($0/hr).
+# When 7 stateful pods deploy (2 nodes): Once Argo CD creates your 2 PostgreSQL, 2 MariaDB, 2 Redis, 
+# and 1 RabbitMQ pods (plus Prometheus if scheduled there), Karpenter will spin up 2 nodes 
+# (two 2-vCPU VMs = 4 vCPUs total) for two technical reasons:
+# Azure's 4-disk limit per 2-vCPU VM: Every one of 7 stateful pods attaches its own Azure Managed Disk PVC
+# On Azure, a 2-vCPU VM can attach a maximum of 4 data disks at once—so 7 disks physically cannot fit on
+# a single 2-vCPU VM.
+# CloudNativePG and MariaDB Operator automatically schedule primary and standby pods on separate nodes so a
+# single VM reboot doesn't take down both replicas.
+# Unlike stateless microservices, databases don't autoscale replicas based on CPU spikes. Unless you manually
+# increase replica counts or add new StatefulSets, stateful-pool will stay at 2 nodes (hard-capped at a 
+# maximum of 4 two-vCPU nodes by limits.cpu: "2")-$4 x 2 = 8 (limit: 8 cpu)
+
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: stateful-pool
+spec:
+  template:
+    metadata:
+      labels:
+        workload: stateful
+    spec:
+      nodeClassRef:
+        group: karpenter.azure.com
+        kind: AKSNodeClass
+        name: default
+      # stamps every VM Karpenter creates in that pool with a restriction.
+      # The NoSchedule effect tells the Kubernetes scheduler: "Do not place any new pod on this node unless
+      # the pod explicitly tolerates workload=stateful."
+      taints:
+        - key: workload
+          value: stateful
+          effect: NoSchedule
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+        # forces Karpenter to provision standard, non-preemptible Azure VMs (blocking Spot instances)
+          values: ["on-demand"]
+        - key: karpenter.azure.com/sku-name
+          operator: In
+          values:
+            - Standard_E2bs_v5
+            - Standard_E2bs_v6
+            - Standard_E2bds_v5
+            - Standard_E2bds_v6
+        
+  # Instructs Karpenter never to evict running database pods just to pack workloads onto fewer VMs; 
+  # a node is only considered eligible for deletion when zero workload pods remain on it (system DaemonSets like Cilium and kube-proxy are ignored).
+  disruption:
+    consolidationPolicy: WhenEmpty
+    # prevents Karpenter from deleting a database VM unless it has been completely empty for 5 minutes.
+    consolidateAfter: 5m
+  limits:
+    cpu: "8"
+    memory: 32Gi

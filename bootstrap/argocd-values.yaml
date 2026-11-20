@@ -1,0 +1,56 @@
+# Because only_critical_addons_enabled = true in modules/aks/main.tf taints the fixed system node pool with
+# CriticalAddonsOnly=true:NoSchedule—and Karpenter has zero NodePools before Argo CD starts—global.tolerations
+# and global.nodeSelector are required so Argo CD pods schedule onto the system node and stay off worker VMs.
+# Disabling dex and trimming requests keeps memory usage low on system node.
+
+global:
+  nodeSelector:
+    kubernetes.azure.com/mode: system
+  tolerations:
+    - key: "CriticalAddonsOnly"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+
+configs:
+  params:
+    # Terminate TLS at your Ingress or port-forward session on the private cluster
+    server.insecure: true
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
+
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+server:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+repoServer:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 128Mi

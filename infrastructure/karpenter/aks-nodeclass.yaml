@@ -1,0 +1,17 @@
+# Defines the underlying Azure VM properties shared by both pools:
+# 1st pool (stateful-pool) runs databases and RabbitMQ, while the 2nd pool (stateless-pool) 
+# runs microservices.
+# Omitting vnetSubnetID tells AKS Node Auto-Provisioning to automatically place nodes inside cluster's
+# snet-aks-nodes subnet without hardcoding Azure Resource IDs in Git.
+
+
+apiVersion: karpenter.azure.com/v1beta1
+kind: AKSNodeClass
+metadata:
+  name: default
+spec:
+  imageFamily: Ubuntu2204
+  osDiskSizeGB: 64
+  tags:
+    environment: dev
+    managed-by: karpenter

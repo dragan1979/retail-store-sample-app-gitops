@@ -1,0 +1,29 @@
+# This is the only manifest CI pipeline applies manually after installing Argo CD. 
+# With directory.recurse: true, any new child Application YAML you add to argocd-apps/ in future steps
+# is automatically discovered and deployed:
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    # Replace with your Azure Repos or GitHub GitOps repository URL
+    repoURL: https://dev.azure.com/my-learning2026/DevOpsLearning/_git/retail-gitops
+    targetRevision: main
+    path: argocd-apps
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,95 @@
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-24.04'
+
+variables:
+  - group: retail-gitops-secrets
+  - name: azureServiceConnectionName
+    value: 'azure'
+  - name: aksResourceGroup
+    value: 'aks-resource-group'
+  - name: aksClusterName
+    value: 'retail-store-aks'
+  - name: tempNodeVmSize
+    value: 'Standard_B2s_v2'
+  - name: gitOpsRepoUrl
+    value: 'https://dev.azure.com/my-learning2026/DevOpsLearning/_git/retail-gitops'
+
+stages:
+- stage: BootstrapArgoCD
+  displayName: 'Bootstrap Argo CD on Private AKS'
+  jobs:
+  - job: InstallAndSync
+    displayName: 'Install Argo CD and Apply Root App'
+    steps:
+    - checkout: self
+
+    - task: AzureCLI@2
+      displayName: '1. Add Temporary Untainted Bootstrap Node Pool'
+      inputs:
+        azureSubscription: '$(azureServiceConnectionName)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          set -e
+          az aks nodepool add \
+            --resource-group "$(aksResourceGroup)" \
+            --cluster-name "$(aksClusterName)" \
+            --name tmpboot \
+            --mode User \
+            --node-count 1 \
+            --node-vm-size "$(tempNodeVmSize)"
+
+    - task: AzureCLI@2
+      displayName: '2. Install Argo CD and Register Repo via Command Invoke'
+      env:
+        PAT_TOKEN: $(AZURE_PAT)
+      inputs:
+        azureSubscription: '$(azureServiceConnectionName)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/bootstrap'
+        inlineScript: |
+          set -e
+          az aks command invoke \
+            --resource-group "$(aksResourceGroup)" \
+            --name "$(aksClusterName)" \
+            --file argocd-values.yaml \
+            --file root-app.yaml \
+            --command "
+              set -e
+              helm repo add argo https://argoproj.github.io/argo-helm
+              helm repo update
+              helm upgrade --install argocd argo/argo-cd \
+                --namespace argocd \
+                --create-namespace \
+                -f argocd-values.yaml \
+                --wait
+
+              kubectl create secret generic retail-gitops-repo \
+                --namespace argocd \
+                --from-literal=type=git \
+                --from-literal=url='$(gitOpsRepoUrl)' \
+                --from-literal=username=git \
+                --from-literal=password='$PAT_TOKEN' \
+                --dry-run=client -o yaml | \
+                kubectl label --local -f - argocd.argoproj.io/secret-type=repository -o yaml | \
+                kubectl apply -f -
+
+              kubectl apply -f root-app.yaml
+            "
+
+    - task: AzureCLI@2
+      displayName: '3. Delete Temporary Bootstrap Node Pool'
+      condition: always()
+      inputs:
+        azureSubscription: '$(azureServiceConnectionName)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az aks nodepool delete \
+            --resource-group "$(aksResourceGroup)" \
+            --cluster-name "$(aksClusterName)" \
+            --name tmpboot \
+            --no-wait

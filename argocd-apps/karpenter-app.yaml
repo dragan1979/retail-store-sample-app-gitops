@@ -1,0 +1,23 @@
+# Assigned sync-wave: "-2" so Argo CD applies AKSNodeClass and NodePool CRDs before any operators (Wave -1)
+# or databases/microservices (Wave 0/1) are created
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: karpenter-pools
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://dev.azure.com/my-learning2026/DevOpsLearning/_git/retail-gitops
+    targetRevision: main
+    path: infrastructure/karpenter
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

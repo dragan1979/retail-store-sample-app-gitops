@@ -1,0 +1,44 @@
+# Dedicated to 5 microservices (cart, catalog, checkout, orders, ui) and monitoring collectors. 
+# It has no taints and uses WhenEmptyOrUnderutilized so Karpenter automatically packs pods onto the 
+# smallest, cheapest VM that fits their CPU and memory requests.
+
+
+
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: stateless-pool
+spec:
+  template:
+    metadata:
+      labels:
+        workload: stateless
+    spec:
+      nodeClassRef:
+        group: karpenter.azure.com
+        kind: AKSNodeClass
+        name: default
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+        - key: karpenter.azure.com/sku-name
+          operator: In
+          values:
+            - Standard_E2bs_v5
+            - Standard_E2bs_v6
+            - Standard_E2bds_v5
+            - Standard_E2bds_v6
+       
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 1m
+  limits:
+    cpu: "8"
+    memory: 32Gi
