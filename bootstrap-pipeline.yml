@@ -36,7 +36,7 @@ stages:
           az aks nodepool add \
             --resource-group "$(aksResourceGroup)" \
             --cluster-name "$(aksClusterName)" \
-            --name tmpboot \
+            --name tmpboot1 \
             --mode User \
             --node-count 1 \
             --node-vm-size "$(tempNodeVmSize)"
@@ -91,5 +91,5 @@ stages:
           az aks nodepool delete \
             --resource-group "$(aksResourceGroup)" \
             --cluster-name "$(aksClusterName)" \
-            --name tmpboot \
+            --name tmpboot1 \
             --no-wait
